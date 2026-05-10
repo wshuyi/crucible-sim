@@ -15,11 +15,10 @@
 
 ### Why this exists
 
-[MiroFish](https://github.com/666ghj/MiroFish) and, separately, [MiroShark](https://github.com/aaronjmars/MiroShark)
-showed that multi-agent social-discourse simulations can produce coherent posts cheaply. They are
-**independent projects** by **different authors** (`666ghj` and `aaronjmars` respectively) with
-no documented fork or predecessor relationship — `crucible-sim` runs on top of MiroFish only and
-does **not** depend on MiroShark in any way.
+[MiroFish](https://github.com/666ghj/MiroFish) (`666ghj`) and
+[MiroShark](https://github.com/aaronjmars/MiroShark) (`aaronjmars`) are two existing swarm-simulation
+projects that showed multi-agent social discourse can be produced coherently and cheaply.
+`crucible-sim` runs on top of MiroFish and is inspired by both.
 
 Out of the box, a swarm tends to **rubber-stamp** the briefing. Real entities pulled from the briefing
 repeat each other's framings; nobody challenges the load-bearing numbers; reports synthesize what
@@ -50,8 +49,7 @@ Selected with `--mode` (env `CRUCIBLE_MODE`):
   crucible's preflight / interview / report layers and **still** patches `time_config` to 24h activity.
   This is a *crucible baseline* with no synthetic injection — not untouched vanilla MiroFish.
 - **`miroshark`** — 5 synthetic agents (above + Provocateur + Futurist), higher temperature, more
-  vivid character voices. **The mode name is a local persona preset only.** It does **not** call MiroShark,
-  does **not** use Neo4j, and does **not** imply a fork relationship with `aaronjmars/MiroShark`.
+  vivid character voices. The mode name is a local persona-preset label; it doesn't call or depend on `aaronjmars/MiroShark`.
 
 The architecture is identical across modes. Only the synthetic-agent layer changes.
 
@@ -194,19 +192,13 @@ crucible/
 
 ### Inspiration & credits
 
-- **[MiroFish (`666ghj/MiroFish`)](https://github.com/666ghj/MiroFish)** — the Zep Cloud–backed
-  swarm engine (REST + OASIS) that crucible-sim talks to. crucible never modifies MiroFish source code,
-  but it does mutate the per-run `simulation_config.json` and `twitter_profiles.csv` after MiroFish's
+- **[MiroFish (`666ghj/MiroFish`)](https://github.com/666ghj/MiroFish)** — the Zep Cloud + OASIS
+  swarm engine that crucible-sim talks to. crucible never modifies MiroFish source code, but it
+  does mutate the per-run `simulation_config.json` and `twitter_profiles.csv` after MiroFish's
   `prepare` step.
-- **[MiroShark (`aaronjmars/MiroShark`)](https://github.com/aaronjmars/MiroShark)** — an independent
-  Neo4j-backed swarm-simulation project by a different author. Its Polymarket-flavored replay-GIF /
-  share-card UX inspired the visual bundling style here. We **do not** call, fork, or depend on
-  MiroShark.
-
-#### Upstream relationship
-
-`MiroFish` and `MiroShark` are **independent projects**. Neither is a git fork of the other, and
-neither README documents a genealogy between them. crucible-sim runs on **MiroFish only**.
+- **[MiroShark (`aaronjmars/MiroShark`)](https://github.com/aaronjmars/MiroShark)** — a Neo4j-backed
+  swarm-simulation project whose Polymarket-flavored replay-GIF / share-card UX inspired the visual
+  bundling style here.
 
 ### Known limitations
 
@@ -224,11 +216,8 @@ neither README documents a genealogy between them. crucible-sim runs on **MiroFi
 
 ### License
 
-This repository is MIT — see [`LICENSE`](LICENSE).
-
-`MiroFish` and `MiroShark` are separate upstream projects with their own licenses. This repo does
-not vendor or copy their code or assets. If you fork crucible-sim and add such material, preserve
-the upstream license and attribution requirements yourself.
+This repository is MIT — see [`LICENSE`](LICENSE). It contains no code or assets copied from MiroFish
+or MiroShark; if you fork it and vendor any, respect the upstream licenses.
 
 ---
 
@@ -236,9 +225,9 @@ the upstream license and attribution requirements yourself.
 
 ### 背景
 
-[MiroFish](https://github.com/666ghj/MiroFish)（作者 `666ghj`）与
-[MiroShark](https://github.com/aaronjmars/MiroShark)（作者 `aaronjmars`）证明了
-跑一场低成本的多 agent 社交仿真是可行的。但**两者是不同作者的独立项目**——不是 fork、也无文档记载的"前身"关系；`crucible-sim` 只在 MiroFish 之上运行，**不**依赖 MiroShark。
+[MiroFish](https://github.com/666ghj/MiroFish)（`666ghj`）和
+[MiroShark](https://github.com/aaronjmars/MiroShark)（`aaronjmars`）这两个群体仿真项目证明了
+跑一场低成本的多 agent 社交仿真是可行的。`crucible-sim` 在 MiroFish 之上运行，灵感来自这两个项目。
 
 开箱即用时，swarm 倾向于**给 briefing 盖章背书**：从 briefing 抽出来的真实实体彼此抄观点，没人挑战
 那些用来撑起结论的关键数字，最后报告综述的也只是 swarm "说过什么"，而不是 swarm "没探索什么"。
@@ -260,7 +249,7 @@ the upstream license and attribution requirements yourself.
 
 - **`default`**（推荐）—— 3 个合成 agent（Skeptic + Expert + Stakeholder），均衡批评。
 - **`mirofish`**—— **零**合成 agent，只用 MiroFish 从 briefing 自动抽取的真实实体；但**仍**会跑 crucible 的 preflight / 采访 / 三轮报告，**仍**会把 `time_config` patch 成 24h 活跃。这是"crucible 不注入合成 agent 的对照基线"，**不是**未经修改的 vanilla MiroFish。
-- **`miroshark`**—— 5 个合成 agent（在 default 之上 + Provocateur + Futurist），人物语言更鲜明、温度更高。**这个模式名只是本项目的人设预设别名。**它**不**调用 `aaronjmars/MiroShark`、**不**使用 Neo4j、**不**暗示 fork 关系。
+- **`miroshark`**—— 5 个合成 agent（在 default 之上 + Provocateur + Futurist），人物语言更鲜明、温度更高。模式名只是本项目的人设预设别名，与 `aaronjmars/MiroShark` 无依赖关系。
 
 三种模式的底层管线**完全一致**，只有合成 agent 这一层不同。
 
@@ -306,11 +295,7 @@ export LLM_MODEL_A_FALLBACK="$LLM_MODEL_NAME"
 ### 致谢
 
 - **[MiroFish (`666ghj/MiroFish`)](https://github.com/666ghj/MiroFish)** —— Zep Cloud + OASIS 的群体仿真引擎，crucible-sim 通过它的 REST API 编排；不修改其源代码，但会修改单次运行的 `simulation_config.json` / `twitter_profiles.csv`。
-- **[MiroShark (`aaronjmars/MiroShark`)](https://github.com/aaronjmars/MiroShark)** —— 由另一位作者维护的、基于 Neo4j 的独立群体仿真项目；其 Polymarket 风的回放 GIF / 分享卡 UX 启发了 crucible 的视觉打包风格。我们**不**调用、**不** fork、**不**依赖 MiroShark。
-
-#### 上游关系澄清
-
-`MiroFish` 与 `MiroShark` 是**两个独立项目**。两者之间没有 git fork 关系，也没有任何 README 记载的"前身/上游"血缘。crucible-sim **只**在 MiroFish 上运行。
+- **[MiroShark (`aaronjmars/MiroShark`)](https://github.com/aaronjmars/MiroShark)** —— 基于 Neo4j 的群体仿真项目，其 Polymarket 风的回放 GIF / 分享卡 UX 启发了 crucible 的视觉打包风格。
 
 ### 已知限制
 
@@ -321,6 +306,4 @@ export LLM_MODEL_A_FALLBACK="$LLM_MODEL_NAME"
 
 ### 许可证
 
-本仓库代码遵循 MIT —— 见 [`LICENSE`](LICENSE)。
-
-`MiroFish` 与 `MiroShark` 是独立的上游项目，各有其许可证。本仓库不 vendor、不复制其代码或资产；如果你 fork crucible-sim 并加入此类内容，请自行遵守上游的许可证与署名要求。
+本仓库代码遵循 MIT —— 见 [`LICENSE`](LICENSE)。仓库中没有 vendor 自 MiroFish / MiroShark 的代码或资产；如果你 fork 后加入了，请自行遵守对应上游的许可证。
