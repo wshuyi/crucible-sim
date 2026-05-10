@@ -51,7 +51,10 @@ PROMPT = """你是社交模拟的中立观察员。下面是某场 swarm-simulat
 """
 
 
-TOPIC_DEFS = [
+# Hardcoded AWS-outage demo topics. Used only when preflight.json has no
+# `topics` field (legacy preflight or LLM omission). Normal flow loads
+# briefing-specific topics from preflight.json via load_topics().
+FALLBACK_TOPIC_DEFS = [
     {"key": "concentration_risk_systemic",
      "label": "AWS 单点故障是系统性风险问题",
      "supportive_means": "认为这是 AWS/平台/政策层面的系统性问题，需监管/拆分",
@@ -71,11 +74,44 @@ TOPIC_DEFS = [
 ]
 
 
-def build_prompt(profiles, posts):
+def load_topics(preflight_path):
+    """Load topics from preflight.json; fall back to hardcoded AWS demo
+    topics if the preflight file doesn't carry them (legacy preflight
+    or LLM omission). Returns (topics, source_label)."""
+    if preflight_path:
+        try:
+            blob = json.loads(Path(preflight_path).read_text())
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"[warn] could not read --topics-from {preflight_path}: {e}; "
+                  "falling back to hardcoded AWS demo topics.")
+            return FALLBACK_TOPIC_DEFS, "fallback:hardcoded"
+        topics = blob.get("topics") or []
+        cleaned = []
+        for t in topics:
+            if not isinstance(t, dict):
+                continue
+            key = t.get("key")
+            label = t.get("label")
+            if not key or not label:
+                continue
+            cleaned.append({
+                "key": str(key),
+                "label": str(label),
+                "supportive_means": str(t.get("supportive_means", "")),
+                "opposed_means": str(t.get("opposed_means", "")),
+            })
+        if cleaned:
+            return cleaned, f"preflight:{preflight_path}"
+        print(f"[warn] {preflight_path} has no usable topics[]; "
+              "falling back to hardcoded AWS demo topics.")
+    return FALLBACK_TOPIC_DEFS, "fallback:hardcoded"
+
+
+def build_prompt(profiles, posts, topic_defs):
     topics_block = "\n".join(
         f'- {t["key"]}: "{t["label"]}"  '
         f'(supportive = {t["supportive_means"]}; opposed = {t["opposed_means"]})'
-        for t in TOPIC_DEFS
+        for t in topic_defs
     )
 
     by_agent = defaultdict(list)
@@ -168,7 +204,19 @@ def main():
     ap.add_argument("--llm-model",
                     default=os.environ.get("LLM_MODEL_NAME", "glm-4.7"))
     ap.add_argument("--max-pairs", type=int, default=8)
+    ap.add_argument("--topics-from", default=None,
+                    help="Path to preflight.json with a `topics` field "
+                         "(default: <results-dir>/preflight.json). When the "
+                         "file is missing or has no topics[], falls back to "
+                         "hardcoded AWS demo topics.")
     args = ap.parse_args()
+
+    topics_from = args.topics_from or str(
+        Path(args.results_dir) / "preflight.json")
+    topic_defs, topics_source = load_topics(topics_from)
+    print(f"[OK] {len(topic_defs)} topics loaded from {topics_source}")
+    for t in topic_defs:
+        print(f"     - {t['key']}: {t['label'][:60]}")
 
     raw = Path(args.results_dir) / "raw"
     profiles_blob = json.loads((raw / "art_profiles.json").read_text())
@@ -183,14 +231,14 @@ def main():
         sys.exit(2)
     print(f"[OK] {len(profiles)} profiles, {len(posts)} posts")
 
-    prompt = build_prompt(profiles, posts)
+    prompt = build_prompt(profiles, posts, topic_defs)
     client = OpenAI(api_key=args.llm_api_key, base_url=args.llm_base_url)
     t0 = time.time()
     stance_data = llm_stance(client, args.llm_model, prompt)
     print(f"[OK] LLM stance assigned in {time.time()-t0:.1f}s "
           f"({len(stance_data.get('stances', []))} agents)")
 
-    pairs = find_pairs(stance_data, topic_meta=TOPIC_DEFS)
+    pairs = find_pairs(stance_data, topic_meta=topic_defs)
     pairs = pairs[:args.max_pairs]
     print(f"[OK] derived {len(pairs)} disagreement pairs")
     for p in pairs:
@@ -200,7 +248,8 @@ def main():
 
     Path(args.out).write_text(json.dumps(
         {"stances": stance_data,
-         "topic_defs": TOPIC_DEFS,
+         "topic_defs": topic_defs,
+         "topics_source": topics_source,
          "pairs": pairs},
         ensure_ascii=False, indent=2))
     print(f"[OK] wrote {args.out}")
