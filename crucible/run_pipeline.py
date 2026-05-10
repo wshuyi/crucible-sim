@@ -110,6 +110,119 @@ def poll(label, fn, *, interval, timeout, success, fail=None):
         time.sleep(interval)
 
 
+def _posts_count(s, base, sim_id, platform, raw):
+    """Probe DB row count for posts. Returns int or None when count is not
+    reliably known. We REFUSE to fall back to len(posts) when the response
+    only carries the posts list, because the limit=1 query would always
+    return 0 or 1 — that fake count would trip the plateau check on every
+    real run and short-circuit healthy simulations."""
+    body = get_json(s, f"{base}/api/simulation/{sim_id}/posts"
+                          f"?platform={platform}&limit=1",
+                    "06_posts_count_latest", raw,
+                    accept_404=True, timeout=30)
+    if not isinstance(body, dict):
+        return None
+    for k in ("count", "total"):
+        v = body.get(k)
+        if isinstance(v, int):
+            return v
+    return None  # plateau detection disabled when backend does not expose count/total
+
+
+def monitor_run(s, base, sim_id, *, platform, run_timeout,
+                plateau_threshold, wait_full_completion, raw_dir,
+                interval=20):
+    """Poll run-status AND posts-count. Exit on:
+       (a) runner_status completed/finished/done
+       (b) {platform}_completed flag flips true (or both flip in parallel)
+       (c) posts count plateaus for >= plateau_threshold seconds with count > 0
+           (soft-completion fallback for OASIS round-counter freezes).
+    Prints state changes only."""
+    start = time.time()
+    last_snap = None
+    last_count = None
+    last_count_change = time.time()
+    # Plateau soft-completion is only safe when one platform is being
+    # monitored. In parallel mode the caller wants BOTH twitter & reddit to
+    # finish; a twitter plateau alone must not end the run while reddit is
+    # still progressing.
+    plateau_enabled = not wait_full_completion
+    plateau_disabled_warned = False
+    while True:
+        elapsed = time.time() - start
+        body = get_json(s, f"{base}/api/simulation/{sim_id}/run-status",
+                        "06_run_status_latest", raw_dir,
+                        accept_404=True)
+        if body is None:
+            time.sleep(interval)
+            continue
+
+        if body.get("runner_status") in ("failed", "error"):
+            why = body.get("error") or "runner_status=failed"
+            print(f"[FAIL] run: {why}")
+            sys.exit(3)
+
+        ok = (body.get("runner_status") in ("completed", "finished", "done"))
+        if not ok:
+            tw_done = bool(body.get("twitter_completed"))
+            rd_done = bool(body.get("reddit_completed"))
+            if wait_full_completion:
+                ok = tw_done and rd_done
+            elif platform == "twitter":
+                ok = tw_done
+            elif platform == "reddit":
+                ok = rd_done
+            else:
+                ok = tw_done or rd_done
+        if ok:
+            print(f"  [run] runner_status={body.get('runner_status')} "
+                  f"twitter_completed={body.get('twitter_completed')} "
+                  f"reddit_completed={body.get('reddit_completed')} "
+                  f"(elapsed={elapsed:.0f}s)")
+            return
+
+        # Plateau check
+        count = _posts_count(s, base, sim_id, platform, raw_dir)
+        if count is None and plateau_enabled and not plateau_disabled_warned:
+            print("[INFO] backend /posts response does not expose count/total; "
+                  "plateau soft-completion disabled, will rely on run-status "
+                  "or --run-timeout.")
+            plateau_disabled_warned = True
+        if count != last_count:
+            last_count = count
+            last_count_change = time.time()
+        plateau_s = time.time() - last_count_change
+        if (plateau_enabled
+                and count is not None and count > 0
+                and plateau_s >= plateau_threshold):
+            print(f"[WARN] OASIS round-counter has not advanced; posts count "
+                  f"({count}) has been flat for {plateau_s:.0f}s "
+                  f"(>= {plateau_threshold}s threshold). Treating as "
+                  f"soft-completed and proceeding to artifact pull. "
+                  f"runner_status={body.get('runner_status')} "
+                  f"current_round={body.get('current_round')}")
+            return
+
+        keys = ("status", "state", "phase", "progress", "message",
+                "current_round", "total_rounds", "runner_status",
+                "twitter_current_round", "twitter_actions_count",
+                "twitter_completed", "twitter_running",
+                "config_generated", "profiles_count")
+        snap = {k: body.get(k) for k in keys if k in body}
+        snap["posts_count"] = count
+        # NOTE: plateau_s deliberately excluded from the snapshot — it ticks
+        # every poll and would defeat the "log only on state change" gate.
+        if snap != last_snap:
+            print(f"  [run] {json.dumps(snap, ensure_ascii=False)}", flush=True)
+            last_snap = snap
+
+        if elapsed > run_timeout:
+            print(f"[TIMEOUT] run after {run_timeout}s "
+                  f"(posts_count={count}, plateau_s={plateau_s:.0f})")
+            sys.exit(4)
+        time.sleep(interval)
+
+
 def _detect_sim_dir(backend, sim_id, *, hint=None):
     """Locate MiroFish's per-sim working directory on the local FS.
 
@@ -275,19 +388,24 @@ def main():
     print(f"  runner: {body.get('runner_status')} "
           f"(max_rounds={args.max_rounds}, platform={args.platform})")
 
-    # 7. Monitor
-    poll("run",
-         lambda: get_json(s, f"{base}/api/simulation/{sim_id}/run-status",
-                          "06_run_status_latest", raw),
-         interval=20, timeout=args.run_timeout,
-         success=lambda b: (
-             b.get("runner_status") in ("completed", "finished", "done")
-             or (args.platform == "twitter" and b.get("twitter_completed"))
-             or (args.platform == "reddit" and b.get("reddit_completed"))
-             or (args.platform == "parallel"
-                 and b.get("twitter_completed") and b.get("reddit_completed"))
-         ),
-         fail=lambda b: b.get("error") if b.get("runner_status") in ("failed", "error") else None)
+    # 7. Monitor (plateau-aware)
+    #
+    # OASIS sometimes freezes mid-run: workers post a partial batch then the
+    # round-counter stops advancing and `twitter_completed` never flips. The
+    # vanilla poll() then waits the full --run-timeout (~5400s) before giving
+    # up. To recover, we ALSO poll the posts table and treat a long plateau in
+    # row count as a "soft completion" — artifacts already pulled exist and
+    # downstream steps can succeed.
+    plat = args.platform if args.platform != "parallel" else "twitter"
+    plateau_threshold = int(os.environ.get("CRUCIBLE_PLATEAU_S", "180"))
+    monitor_run(
+        s, base, sim_id,
+        platform=plat,
+        run_timeout=args.run_timeout,
+        plateau_threshold=plateau_threshold,
+        wait_full_completion=(args.platform == "parallel"),
+        raw_dir=raw,
+    )
     print("  run completed (env left alive for interviews)")
 
     # 8. Pull artifacts (no close-env, no report — crucible runs its own reports)
