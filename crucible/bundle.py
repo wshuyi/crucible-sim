@@ -369,8 +369,8 @@ const network = new vis.Network(document.getElementById('graph'),
     (out_dir / "index.html").write_text(html)
     print(f"  wrote {out_dir/'index.html'} ({len(html)} bytes)")
 
-    # tarball
-    tar_path = out_dir / f"crucible-aws-outage.tar.gz"
+    # tarball — name from out_dir basename so non-AWS runs aren't misnamed
+    tar_path = out_dir / f"{out_dir.name}.tar.gz"
     with tarfile.open(tar_path, "w:gz") as tf:
         for name in ["index.html", "manifest.json", "preflight.json",
                      "synthetic_agents.json", "disagreement_pairs.json",
