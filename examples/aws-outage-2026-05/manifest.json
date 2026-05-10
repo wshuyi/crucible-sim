@@ -1,0 +1,11 @@
+{
+  "simulation_id": "sim_def7baba57c8",
+  "project_id": "proj_9470b1128a45",
+  "graph_id": "mirofish_fd5c83d2da8c4a11",
+  "platform": "twitter",
+  "max_rounds": 5,
+  "doc": "inputs/aws-outage-briefing.md",
+  "requirement": "AWS US-East-1 outage on May 8, 2026 affected FanDuel, Coinbase, prediction markets and federal portals. Simulate Twitter discourse with 11 agents (8 real entities + 3 synthetic adversarial: Skeptic, SRE Domain Expert, Personal Stakeholder). Capture concentration risk debate, multi-cloud vs multi-region opinions, and adversarial pushback on Polymarket 38% YES claim and AMZN -1.6% reaction.",
+  "sim_dir": "<MIROFISH_SIM_ROOT>/sim_def7baba57c8",
+  "ts": "2026-05-10T10:05:51"
+}

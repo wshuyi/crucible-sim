@@ -1,0 +1,80 @@
+{
+  "named_entities": [
+    "Amazon Web Services (AWS)",
+    "US-East-1",
+    "CNBC",
+    "FanDuel",
+    "Coinbase",
+    "EC2",
+    "Lambda",
+    "DynamoDB",
+    "S3",
+    "Polymarket"
+  ],
+  "numerical_claims": [
+    {
+      "claim": "Recovery would take 'hours'",
+      "source_quote": "CNBC reported that recovery would \"take hours\"",
+      "potential_dispute": "Vague estimates often extend into days if cascading dependency failures occur."
+    },
+    {
+      "claim": "AMZN traded down 1.6%",
+      "source_quote": "Amazon’s stock (AMZN) traded down approximately 1.6% on the day",
+      "potential_dispute": "Intraday volatility is noise unless held through market close; recovery invalidates the panic signal."
+    },
+    {
+      "claim": "Postmortem promised within 14 days",
+      "source_quote": "AWS promised a postmortem within 14 days.",
+      "potential_dispute": "Deadlines for internal reports are often missed or result in redacted summaries lacking root cause data."
+    },
+    {
+      "claim": "Polymarket prediction at 38% YES",
+      "source_quote": "Polymarket opened a market... at roughly 38% YES",
+      "potential_dispute": "Prediction markets on niche events suffer from low liquidity and manipulation, not probability accuracy."
+    },
+    {
+      "claim": "Briefing covers 'major outage'",
+      "source_quote": "Amazon Web Services experienced a major outage",
+      "potential_dispute": "Without specific availability metrics (e.g., 5-nine vs 4-nine), 'major' is subjective PR language."
+    }
+  ],
+  "contested_points": [
+    {
+      "topic": "Concentration risk",
+      "sides": [
+        "Systemic risk requires regulatory breakup",
+        "It is a customer architecture failure to not multi-region"
+      ]
+    },
+    {
+      "topic": "Mitigation strategy",
+      "sides": [
+        "Active multi-region within AWS is sufficient",
+        "True multi-cloud (AWS+GCP+Azure) is required for safety"
+      ]
+    },
+    {
+      "topic": "Financial liability",
+      "sides": [
+        "Class-action lawsuits are inevitable",
+        "SLA credits will cover minimal damages"
+      ]
+    },
+    {
+      "topic": "Enterprise migration",
+      "sides": [
+        "Enterprises will accelerate move to competitors",
+        "Migration lock-in makes switching too expensive"
+      ]
+    }
+  ],
+  "missing_angles": [
+    "Regulatory bodies (e.g., SEC, CFTC) investigating market halts",
+    "Small to Medium Businesses (SMBs) lacking engineering resources to multi-region",
+    "Technical debt management in legacy monoliths preventing quick failover",
+    "Cyber insurance claims and premium adjustments post-incident",
+    "SRE (Site Reliability Engineering) perspective on human error vs. automation failure",
+    "Impact on international users routing through US-East-1 by default"
+  ],
+  "weakest_claim": "Critics argued that a single AWS region failing is a systemic-risk problem, not an AWS bug."
+}

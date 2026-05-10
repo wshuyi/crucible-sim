@@ -1,0 +1,34 @@
+# Crucible-sim local artifacts
+logs/
+results/*/raw/
+results/*/manifest.json
+results/*/replay.gif
+results/*/index.html
+results/*/*.tar.gz
+results/*/synthetic_agents.json
+results/*/disagreement_pairs.json
+results/*/interviews_r1_r2_r3.json
+
+# Keep the AWS-outage demo briefing + reports as showcase
+!inputs/aws-outage-briefing.md
+!examples/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.env
+.env.*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Secrets — never commit
+secrets.zsh
+secrets.env
+*-secrets.env
+PROGRESS.md

@@ -1,0 +1,280 @@
+{
+  "stances": {
+    "stances": [
+      {
+        "agent_id": 0,
+        "agent_name": "GCP",
+        "topic_stances": {
+          "concentration_risk_systemic": "neutral",
+          "multicloud_vs_multiregion": "neutral",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": "AWS Service Health Dashboard"
+      },
+      {
+        "agent_id": 1,
+        "agent_name": "FanDuel",
+        "topic_stances": {
+          "concentration_risk_systemic": "neutral",
+          "multicloud_vs_multiregion": "neutral",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": "Some live bets could not be settled due to this disruption and we are refunding those affected."
+      },
+      {
+        "agent_id": 2,
+        "agent_name": "federal government portals",
+        "topic_stances": {
+          "concentration_risk_systemic": "neutral",
+          "multicloud_vs_multiregion": "neutral",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": ""
+      },
+      {
+        "agent_id": 3,
+        "agent_name": "CNBC",
+        "topic_stances": {
+          "concentration_risk_systemic": "supportive",
+          "multicloud_vs_multiregion": "neutral",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": "Critics call this a systemic risk problem, not just a technical glitch."
+      },
+      {
+        "agent_id": 4,
+        "agent_name": "Coinbase",
+        "topic_stances": {
+          "concentration_risk_systemic": "neutral",
+          "multicloud_vs_multiregion": "neutral",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": "Users are currently unable to execute crypto trades due to connectivity issues."
+      },
+      {
+        "agent_id": 5,
+        "agent_name": "AWS US-East-1",
+        "topic_stances": {
+          "concentration_risk_systemic": "supportive",
+          "multicloud_vs_multiregion": "supportive",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": "Today's outage suggests we need more diversification."
+      },
+      {
+        "agent_id": 6,
+        "agent_name": "Amazon Web Services",
+        "topic_stances": {
+          "concentration_risk_systemic": "neutral",
+          "multicloud_vs_multiregion": "neutral",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": ""
+      },
+      {
+        "agent_id": 7,
+        "agent_name": "prediction-market traders",
+        "topic_stances": {
+          "concentration_risk_systemic": "supportive",
+          "multicloud_vs_multiregion": "supportive",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": "Will this incident accelerate migration to GCP or Azure?"
+      },
+      {
+        "agent_id": 8,
+        "agent_name": "Polymarket",
+        "topic_stances": {
+          "concentration_risk_systemic": "neutral",
+          "multicloud_vs_multiregion": "neutral",
+          "polymarket_38_credible": "supportive",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": "Currently trading at 38% YES following today's incident."
+      },
+      {
+        "agent_id": 9,
+        "agent_name": "AWS",
+        "topic_stances": {
+          "concentration_risk_systemic": "neutral",
+          "multicloud_vs_multiregion": "neutral",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": ""
+      },
+      {
+        "agent_id": 10,
+        "agent_name": "AMZN",
+        "topic_stances": {
+          "concentration_risk_systemic": "neutral",
+          "multicloud_vs_multiregion": "neutral",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "supportive"
+        },
+        "key_quote": "Amazon's stock (AMZN) is down approximately 1.6% today following the US-East-1 outage announcement."
+      },
+      {
+        "agent_id": 11,
+        "agent_name": "enterprises",
+        "topic_stances": {
+          "concentration_risk_systemic": "neutral",
+          "multicloud_vs_multiregion": "neutral",
+          "polymarket_38_credible": "opposed",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": "38% YES on another AWS outage before year-end seems too high."
+      },
+      {
+        "agent_id": 12,
+        "agent_name": "Azure",
+        "topic_stances": {
+          "concentration_risk_systemic": "neutral",
+          "multicloud_vs_multiregion": "neutral",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": ""
+      },
+      {
+        "agent_id": 13,
+        "agent_name": "Marcus Thorne, Infrastructure Analyst",
+        "topic_stances": {
+          "concentration_risk_systemic": "supportive",
+          "multicloud_vs_multiregion": "opposed",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": "Multi-region deployments with active-active architectures aren't just best practice anymore - they're table stakes."
+      },
+      {
+        "agent_id": 14,
+        "agent_name": "Dr. Aris Vlachopoulos, SRE Architect",
+        "topic_stances": {
+          "concentration_risk_systemic": "neutral",
+          "multicloud_vs_multiregion": "opposed",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": "Multi-region deployments with active-active architectures aren't just best practice anymore - they're table stakes."
+      },
+      {
+        "agent_id": 15,
+        "agent_name": "Elena Rossi, SMB Owner @LogiFlow",
+        "topic_stances": {
+          "concentration_risk_systemic": "supportive",
+          "multicloud_vs_multiregion": "mixed",
+          "polymarket_38_credible": "neutral",
+          "amzn_drop_significant": "neutral"
+        },
+        "key_quote": "Critics call this a systemic risk problem, not just a technical glitch."
+      }
+    ]
+  },
+  "topic_defs": [
+    {
+      "key": "concentration_risk_systemic",
+      "label": "AWS 单点故障是系统性风险问题",
+      "supportive_means": "认为这是 AWS/平台/政策层面的系统性问题，需监管/拆分",
+      "opposed_means": "认为这是用户/企业自己 multi-region 没做好，怪 AWS 没道理"
+    },
+    {
+      "key": "multicloud_vs_multiregion",
+      "label": "应当 true multi-cloud 还是 active multi-region",
+      "supportive_means": "明确支持 multi-cloud (AWS+GCP+Azure)",
+      "opposed_means": "认为 multi-region within AWS 已足够"
+    },
+    {
+      "key": "polymarket_38_credible",
+      "label": "Polymarket 38% YES 是有意义的市场共识",
+      "supportive_means": "把 38% 当作可信信号去引用",
+      "opposed_means": "质疑 38% 背后的流动性/操纵/信号价值"
+    },
+    {
+      "key": "amzn_drop_significant",
+      "label": "AMZN 当日跌 1.6% 是有意义的市场反应",
+      "supportive_means": "用 1.6% 论证投资者对 AWS 的担忧",
+      "opposed_means": "认为 1.6% 在日内噪音范围内，且当日已部分修复，无信号"
+    }
+  ],
+  "pairs": [
+    {
+      "topic_key": "multicloud_vs_multiregion",
+      "topic_label": "应当 true multi-cloud 还是 active multi-region",
+      "supportive_agent": {
+        "id": 5,
+        "name": "AWS US-East-1",
+        "quote": "Today's outage suggests we need more diversification."
+      },
+      "opposed_agent": {
+        "id": 13,
+        "name": "Marcus Thorne, Infrastructure Analyst",
+        "quote": "Multi-region deployments with active-active architectures aren't just best practice anymore - they're table stakes."
+      }
+    },
+    {
+      "topic_key": "multicloud_vs_multiregion",
+      "topic_label": "应当 true multi-cloud 还是 active multi-region",
+      "supportive_agent": {
+        "id": 5,
+        "name": "AWS US-East-1",
+        "quote": "Today's outage suggests we need more diversification."
+      },
+      "opposed_agent": {
+        "id": 14,
+        "name": "Dr. Aris Vlachopoulos, SRE Architect",
+        "quote": "Multi-region deployments with active-active architectures aren't just best practice anymore - they're table stakes."
+      }
+    },
+    {
+      "topic_key": "multicloud_vs_multiregion",
+      "topic_label": "应当 true multi-cloud 还是 active multi-region",
+      "supportive_agent": {
+        "id": 7,
+        "name": "prediction-market traders",
+        "quote": "Will this incident accelerate migration to GCP or Azure?"
+      },
+      "opposed_agent": {
+        "id": 13,
+        "name": "Marcus Thorne, Infrastructure Analyst",
+        "quote": "Multi-region deployments with active-active architectures aren't just best practice anymore - they're table stakes."
+      }
+    },
+    {
+      "topic_key": "multicloud_vs_multiregion",
+      "topic_label": "应当 true multi-cloud 还是 active multi-region",
+      "supportive_agent": {
+        "id": 7,
+        "name": "prediction-market traders",
+        "quote": "Will this incident accelerate migration to GCP or Azure?"
+      },
+      "opposed_agent": {
+        "id": 14,
+        "name": "Dr. Aris Vlachopoulos, SRE Architect",
+        "quote": "Multi-region deployments with active-active architectures aren't just best practice anymore - they're table stakes."
+      }
+    },
+    {
+      "topic_key": "polymarket_38_credible",
+      "topic_label": "Polymarket 38% YES 是有意义的市场共识",
+      "supportive_agent": {
+        "id": 8,
+        "name": "Polymarket",
+        "quote": "Currently trading at 38% YES following today's incident."
+      },
+      "opposed_agent": {
+        "id": 11,
+        "name": "enterprises",
+        "quote": "38% YES on another AWS outage before year-end seems too high."
+      }
+    }
+  ]
+}
