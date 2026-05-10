@@ -179,7 +179,10 @@ def monitor_run(s, base, sim_id, *, platform, run_timeout,
                   f"twitter_completed={body.get('twitter_completed')} "
                   f"reddit_completed={body.get('reddit_completed')} "
                   f"(elapsed={elapsed:.0f}s)")
-            return
+            return {"plateau_triggered": False,
+                    "final_runner_status": body.get("runner_status"),
+                    "final_posts_count": last_count,
+                    "elapsed_s": int(elapsed)}
 
         # Plateau check
         count = _posts_count(s, base, sim_id, platform, raw_dir)
@@ -201,7 +204,10 @@ def monitor_run(s, base, sim_id, *, platform, run_timeout,
                   f"soft-completed and proceeding to artifact pull. "
                   f"runner_status={body.get('runner_status')} "
                   f"current_round={body.get('current_round')}")
-            return
+            return {"plateau_triggered": True,
+                    "final_runner_status": body.get("runner_status"),
+                    "final_posts_count": count,
+                    "elapsed_s": int(elapsed)}
 
         keys = ("status", "state", "phase", "progress", "message",
                 "current_round", "total_rounds", "runner_status",
@@ -221,6 +227,9 @@ def monitor_run(s, base, sim_id, *, platform, run_timeout,
                   f"(posts_count={count}, plateau_s={plateau_s:.0f})")
             sys.exit(4)
         time.sleep(interval)
+    # unreachable
+    return {"plateau_triggered": False, "final_runner_status": None,
+            "final_posts_count": last_count, "elapsed_s": int(time.time() - start)}
 
 
 def _detect_sim_dir(backend, sim_id, *, hint=None):
@@ -256,6 +265,122 @@ def _detect_sim_dir(backend, sim_id, *, hint=None):
         if d.exists() and (d / "simulation_config.json").exists():
             return d
     return None
+
+
+def _load_artifact_body(out_dir: Path, raw_name: str):
+    """Load raw/<name>.json and unwrap _status/body shape; return None on miss."""
+    p = out_dir / "raw" / raw_name
+    if not p.exists():
+        return None
+    try:
+        blob = json.loads(p.read_text())
+    except Exception:
+        return None
+    body = blob.get("body") if isinstance(blob, dict) and "body" in blob else blob
+    if isinstance(body, dict) and "data" in body and isinstance(body["data"], dict):
+        return body["data"]
+    return body
+
+
+def _compute_representation_metrics(out_dir: Path, monitor_result: dict) -> dict:
+    """Read raw/art_config.json + raw/art_posts.json + synthetic_agents.json
+    and produce the representation_metrics shape consumed by bundle.py.
+
+    Degraded judgment uses two OR-conditions, both env-overridable:
+      silent_real_ratio >= CRUCIBLE_DEGRADED_SILENT_MIN  (default 0.75)
+      real_post_ratio   <  CRUCIBLE_DEGRADED_REAL_RATIO_MAX (default 0.35)
+    Either condition (with total_posts > 0) flips degraded_real_silent=True.
+    """
+    silent_min = float(os.environ.get("CRUCIBLE_DEGRADED_SILENT_MIN", "0.75"))
+    real_ratio_max = float(os.environ.get("CRUCIBLE_DEGRADED_REAL_RATIO_MAX", "0.35"))
+    base_meta = {
+        "schema_version": 1,
+        "thresholds": {
+            "silent_real_ratio_min": silent_min,
+            "real_post_ratio_max": real_ratio_max,
+        },
+        "plateau_triggered": bool(monitor_result.get("plateau_triggered")),
+        "final_runner_status": monitor_result.get("final_runner_status"),
+        "final_posts_count": monitor_result.get("final_posts_count"),
+    }
+    cfg = _load_artifact_body(out_dir, "art_config.json")
+    posts_data = _load_artifact_body(out_dir, "art_posts.json")
+    synth_path = out_dir / "synthetic_agents.json"
+    synth_blob = None
+    if synth_path.exists():
+        try:
+            synth_blob = json.loads(synth_path.read_text())
+        except Exception:
+            synth_blob = None
+    missing = []
+    if not isinstance(cfg, dict) or "agent_configs" not in cfg:
+        missing.append("art_config.json")
+    if not isinstance(posts_data, dict) or "posts" not in posts_data:
+        missing.append("art_posts.json")
+    if not isinstance(synth_blob, dict):
+        missing.append("synthetic_agents.json")
+    if missing:
+        return {**base_meta, "error": "artifact_missing_or_corrupt",
+                "missing": missing, "degraded_real_silent": None}
+
+    written = synth_blob.get("written_configs") or []
+    synth_ids = set()
+    for w in written:
+        try:
+            synth_ids.add(int(w.get("agent_id")))
+        except (TypeError, ValueError):
+            continue
+    all_agents = cfg.get("agent_configs") or []
+    total_real = max(0, len(all_agents) - len(synth_ids))
+    real_ids = set()
+    for entry in all_agents:
+        try:
+            aid = int(entry.get("agent_id"))
+        except (TypeError, ValueError):
+            continue
+        if aid not in synth_ids:
+            real_ids.add(aid)
+
+    posts = posts_data.get("posts") or []
+    total_posts = len(posts)
+    synth_posts = 0
+    real_posts = 0
+    real_voiced = set()
+    for p in posts:
+        try:
+            uid = int(p.get("user_id"))
+        except (TypeError, ValueError):
+            continue
+        if uid in synth_ids:
+            synth_posts += 1
+        elif uid in real_ids:
+            real_posts += 1
+            real_voiced.add(uid)
+
+    real_post_ratio = (real_posts / total_posts) if total_posts else 0.0
+    silent_real = max(0, total_real - len(real_voiced))
+    silent_real_ratio = (silent_real / total_real) if total_real else 0.0
+
+    reasons = []
+    if total_posts > 0:
+        if silent_real_ratio >= silent_min:
+            reasons.append(f"silent_real_ratio>={silent_min}")
+        if real_post_ratio < real_ratio_max:
+            reasons.append(f"real_post_ratio<{real_ratio_max}")
+    degraded = bool(reasons)
+
+    return {
+        **base_meta,
+        "total_posts": total_posts,
+        "synth_posts": synth_posts,
+        "real_posts": real_posts,
+        "real_post_ratio": round(real_post_ratio, 3),
+        "total_real_agents": total_real,
+        "silent_real_agents": silent_real,
+        "silent_real_ratio": round(silent_real_ratio, 3),
+        "degraded_real_silent": degraded,
+        "degradation_reasons": reasons,
+    }
 
 
 def main():
@@ -398,14 +523,14 @@ def main():
     # downstream steps can succeed.
     plat = args.platform if args.platform != "parallel" else "twitter"
     plateau_threshold = int(os.environ.get("CRUCIBLE_PLATEAU_S", "180"))
-    monitor_run(
+    monitor_result = monitor_run(
         s, base, sim_id,
         platform=plat,
         run_timeout=args.run_timeout,
         plateau_threshold=plateau_threshold,
         wait_full_completion=(args.platform == "parallel"),
         raw_dir=raw,
-    )
+    ) or {}
     print("  run completed (env left alive for interviews)")
 
     # 8. Pull artifacts (no close-env, no report — crucible runs its own reports)
@@ -414,14 +539,28 @@ def main():
         ("config", f"/api/simulation/{sim_id}/config"),
         ("profiles", f"/api/simulation/{sim_id}/profiles/realtime?platform={plat}"),
         ("graph_data", f"/api/graph/data/{graph_id}"),
-        ("posts", f"/api/simulation/{sim_id}/posts?platform={plat}&limit=500"),
-        ("comments", f"/api/simulation/{sim_id}/comments?platform={plat}&limit=500"),
+        ("posts", f"/api/simulation/{sim_id}/posts?platform={plat}&limit=2000"),
+        ("comments", f"/api/simulation/{sim_id}/comments?platform={plat}&limit=2000"),
         ("timeline", f"/api/simulation/{sim_id}/timeline?platform={plat}"),
         ("actions", f"/api/simulation/{sim_id}/actions?platform={plat}&limit=2000"),
         ("agent_stats", f"/api/simulation/{sim_id}/agent-stats?platform={plat}"),
     ]
     for label, path in art_paths:
         get_json(s, f"{base}{path}", f"art_{label}", raw)
+
+    # 8.5 representation_metrics: who actually posted vs who could have.
+    metrics = _compute_representation_metrics(out, monitor_result)
+    (out / "representation_metrics.json").write_text(
+        json.dumps(metrics, ensure_ascii=False, indent=2))
+    if metrics.get("error"):
+        print(f"[WARN] representation_metrics: {metrics['error']} "
+              f"(missing={metrics.get('missing')})")
+    else:
+        print(f"  representation: {metrics['real_posts']}/{metrics['total_posts']} "
+              f"posts from real ({metrics['real_post_ratio']:.0%}); "
+              f"{metrics['silent_real_agents']}/{metrics['total_real_agents']} "
+              f"real agents silent ({metrics['silent_real_ratio']:.0%}); "
+              f"degraded_real_silent={metrics['degraded_real_silent']}")
 
     # 9. Manifest
     manifest = {
@@ -436,6 +575,7 @@ def main():
         "sim_dir": str(sim_dir),
         "llm_base_url": args.llm_base_url,
         "llm_model": args.llm_model,
+        "artifact_pull_limits": {"posts": 2000, "comments": 2000, "actions": 2000},
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     (out / "manifest.json").write_text(

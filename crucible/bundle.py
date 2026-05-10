@@ -52,6 +52,73 @@ def _md_to_html(md: str) -> str:
     return f"<p>{md}</p>"
 
 
+DISCLAIMER_MD_FIRSTLINE = "> ⚠️ 真实 agent 在 OASIS posts 时间线中沉默"
+
+
+def _build_disclaimer_text(m: dict) -> tuple[str, str]:
+    """Return (markdown_blockquote, html_banner_inner) for a degraded run."""
+    rp = m.get("real_posts", 0)
+    tp = m.get("total_posts", 0)
+    rpr = m.get("real_post_ratio", 0.0) or 0.0
+    sa = m.get("silent_real_agents", 0)
+    tra = m.get("total_real_agents", 0)
+    srr = m.get("silent_real_ratio", 0.0) or 0.0
+    md = (
+        f"{DISCLAIMER_MD_FIRSTLINE}\n"
+        f"> This OASIS posts timeline over-represents synthetic voices: "
+        f"{rp}/{tp} posts ({rpr:.0%}) came from real agents; "
+        f"{sa}/{tra} real agents ({srr:.0%}) stayed silent.\n"
+        f"> The R1/R3 interview rounds (where all agents responded) are the "
+        f"balanced view; the Posts section in `index.html` is not. "
+        f"See `representation_metrics.json` for raw numbers.\n\n"
+    )
+    html_inner = (
+        f"<b>⚠️ Real-agent silence</b> — {rp}/{tp} posts ({rpr:.0%}) from real agents; "
+        f"{sa}/{tra} real agents ({srr:.0%}) stayed silent. "
+        f"Posts timeline below over-represents synthetic voices; "
+        f"prefer R1/R3 interview rounds for the balanced view."
+    )
+    return md, html_inner
+
+
+def _load_metrics_and_disclaimer(out_dir: Path):
+    """Read representation_metrics.json. Returns (metrics_dict_or_None,
+    disclaimer_md_or_empty, disclaimer_html_or_empty). When the file is missing
+    OR degraded_real_silent is not strictly True, both disclaimer strings are
+    empty (so bundle.py walks the legacy path).
+    """
+    p = out_dir / "representation_metrics.json"
+    if not p.exists():
+        return None, "", ""
+    try:
+        m = json.loads(p.read_text())
+    except Exception as e:
+        print(f"[WARN] bundle: representation_metrics.json unreadable ({e}); "
+              f"skipping disclaimer.")
+        return None, "", ""
+    if m.get("degraded_real_silent") is None:
+        print(f"[WARN] bundle: representation_metrics.degraded_real_silent is null "
+              f"(error={m.get('error')!r}, missing={m.get('missing')}); "
+              f"skipping disclaimer.")
+        return m, "", ""
+    if m.get("degraded_real_silent") is not True:
+        return m, "", ""
+    md, html_inner = _build_disclaimer_text(m)
+    return m, md, html_inner
+
+
+def _prepend_disclaimer_idempotent(md_path: Path, disclaimer: str):
+    """Prepend `disclaimer` to md_path's contents, unless its first line already
+    starts with the disclaimer marker. No-op when the file does not exist."""
+    if not md_path.exists():
+        return False
+    txt = md_path.read_text()
+    if txt.lstrip().startswith(DISCLAIMER_MD_FIRSTLINE):
+        return False
+    md_path.write_text(disclaimer + txt)
+    return True
+
+
 def build(out_dir: Path):
     raw = out_dir / "raw"
     manifest = json.loads((out_dir / "manifest.json").read_text())
@@ -72,6 +139,14 @@ def build(out_dir: Path):
     synth_ids = {c["agent_id"] for c in synth_configs}
     synth_meta = {c["agent_id"]: c for c in synth_configs}
     real_count = len(profile_list) - len(synth_ids)
+
+    # Representation metrics + disclaimer (must run BEFORE the report .md files
+    # are read on line ~205 — otherwise HTML report cards would render the old
+    # un-disclaimed text while the disk md files get the disclaimer prepended.
+    rep_metrics, disclaimer_md, disclaimer_html = _load_metrics_and_disclaimer(out_dir)
+    if disclaimer_md:
+        for name in ("report_pass_A.md", "report_pass_B.md", "report_pass_C_gap.md"):
+            _prepend_disclaimer_idempotent(out_dir / name, disclaimer_md)
 
     # Agent name map
     name_by_uid = {}
@@ -263,12 +338,18 @@ th{{background:#161b22}}
 .report-grid h3{{margin-top:0;color:#58a6ff}}
 .report-grid p{{font-size:13px}}
 @media (max-width:980px){{.report-grid{{grid-template-columns:1fr}}}}
+.warn-banner{{background:#3d1414;border:1px solid #f85149;color:#ffdcd7;
+  padding:14px 24px;font-size:13px;line-height:1.6;margin:0}}
+.warn-banner b{{color:#ff7b72}}
+.warn-banner-inline{{background:#3d1414;border:1px solid #f85149;color:#ffdcd7;
+  padding:10px 14px;font-size:12px;line-height:1.5;margin:0 0 14px;border-radius:6px}}
 </style></head><body>
 
 <header>
   <h1>Crucible-sim · {escape(title)}</h1>
   <div class="meta">simulation_id <code>{escape(str(sim_id))}</code> · platform <code>{escape(plat)}</code> · {len(profile_list)} agents ({real_count} real + {len(synth_ids)} synthetic) · {posts_count} posts · {len(nodes)} kg-nodes / {len(edges)} kg-edges</div>
 </header>
+{(f'<div class="warn-banner">{disclaimer_html}</div>') if disclaimer_html else ''}
 
 <nav>
   <a href="#overview">Overview</a>
@@ -309,6 +390,7 @@ th{{background:#161b22}}
 
 <section id="posts">
   <h2>Posts (first 300)</h2>
+  {(f'<div class="warn-banner-inline">{disclaimer_html}</div>') if disclaimer_html else ''}
   {''.join(posts_html) or '<i>no posts</i>'}
 </section>
 
@@ -376,7 +458,8 @@ const network = new vis.Network(document.getElementById('graph'),
                      "synthetic_agents.json", "disagreement_pairs.json",
                      "interviews_r1_r2_r3.json", "replay.gif",
                      "report_pass_A.md", "report_pass_B.md",
-                     "report_pass_C_gap.md"]:
+                     "report_pass_C_gap.md",
+                     "representation_metrics.json"]:
             p = out_dir / name
             if p.exists():
                 tf.add(p, arcname=name)

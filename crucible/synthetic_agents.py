@@ -55,9 +55,9 @@ SYNTH_PROMPT_DEFAULT = """你要为一场 swarm-simulation 注入 3 个虚构具
   "entity_type": "Person",
   "stance": "skeptic | expert | stakeholder",
   "sentiment_bias": <float -0.8..0.8>,
-  "activity_level": <float 0.6..0.9>,
-  "posts_per_hour": <int 3..6>,
-  "comments_per_hour": <int 4..8>,
+  "activity_level": <float 0.4..0.7>,
+  "posts_per_hour": <int 1..3>,
+  "comments_per_hour": <int 2..5>,
   "influence_weight": <float 0.8..2.0>,
   "private_prior": "一句话的私有立场（具体到事实级反驳，不要空话）",
   "conflicts_with": ["real agent 池里至少 1 个名字"],
@@ -69,6 +69,7 @@ SYNTH_PROMPT_DEFAULT = """你要为一场 swarm-simulation 注入 3 个虚构具
 - 三个角色合起来必须覆盖至少 2 个 missing_angle
 - private_prior 必须是**具体反驳**：例如不写"他不同意 38%"，而写"38% 在 Polymarket 上低于 5 万 USDC 流动性的 bin，无法构成市场共识"
 - 每个 conflicts_with 至少给一个具体真实 agent 名（不能写 "all"）
+- 活跃度区间已下调，目的是与真实 agent 的活跃水平形成 2-3× 的合理差距，而不是 5-30× 的"刷屏感"
 - 只输出 JSON 数组、不要 markdown fence、不要前言
 """
 
@@ -104,9 +105,9 @@ SYNTH_PROMPT_MIROSHARK = """你要为一场 swarm-simulation 注入 5 个**风�
   "entity_type": "Person",
   "stance": "skeptic | expert | stakeholder | provocateur | futurist",
   "sentiment_bias": <float -1.0..1.0>,
-  "activity_level": <float 0.7..1.0>,
-  "posts_per_hour": <int 4..8>,
-  "comments_per_hour": <int 5..10>,
+  "activity_level": <float 0.5..0.8>,
+  "posts_per_hour": <int 2..4>,
+  "comments_per_hour": <int 3..6>,
   "influence_weight": <float 0.9..2.5>,
   "private_prior": "一句话的私有立场（必须有具体反例 / 数字 / 历史类比）",
   "conflicts_with": ["真实 agent 池里至少 1 个名字"],
@@ -121,6 +122,71 @@ SYNTH_PROMPT_MIROSHARK = """你要为一场 swarm-simulation 注入 5 个**风�
 - 不要写成新闻通讯稿；让每个角色像剧中人物
 - 只输出 JSON 数组、不要 markdown fence、不要前言
 """
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(float(raw))
+    except ValueError:
+        return default
+
+
+def _lift_real_agents(cfg: dict, *, real_count: int) -> dict:
+    """Bump every real agent's posts_per_hour / activity_level above a floor and
+    cap response_delay_max so brand/org accounts can actually post in short
+    plateau windows. Mode-aware caller decides whether to invoke this.
+
+    Disabled when CRUCIBLE_NO_LIFT_REAL is set to a truthy value.
+    Returns a small stats dict (lifted_count + thresholds) for logging.
+    """
+    if os.environ.get("CRUCIBLE_NO_LIFT_REAL", "").strip() not in ("", "0", "false", "False"):
+        return {"lifted_count": 0, "skipped": "CRUCIBLE_NO_LIFT_REAL"}
+    pph_floor = _env_float("CRUCIBLE_LIFT_REAL_PPH_FLOOR", 1.5)
+    act_floor = _env_float("CRUCIBLE_LIFT_REAL_ACT_FLOOR", 0.4)
+    delay_max_cap = _env_int("CRUCIBLE_LIFT_REAL_DELAY_MAX_S", 60)
+    lifted = 0
+    for entry in cfg.get("agent_configs", [])[:real_count]:
+        before_pph = entry.get("posts_per_hour", 0)
+        before_act = entry.get("activity_level", 0)
+        before_delay = entry.get("response_delay_max", delay_max_cap)
+        new_pph = max(float(before_pph or 0), pph_floor)
+        new_act = max(float(before_act or 0), act_floor)
+        # Only set upper bound on response_delay_max; leave response_delay_min alone.
+        new_delay = min(int(before_delay or delay_max_cap), delay_max_cap)
+        if (new_pph != before_pph or new_act != before_act
+                or new_delay != before_delay):
+            lifted += 1
+        entry["posts_per_hour"] = new_pph
+        entry["activity_level"] = new_act
+        entry["response_delay_max"] = new_delay
+    return {"lifted_count": lifted, "real_count": real_count,
+            "pph_floor": pph_floor, "act_floor": act_floor,
+            "delay_max_cap": delay_max_cap}
+
+
+def _clamp_synth_entry(entry: dict) -> dict:
+    """Hard-cap a synthetic agent_config entry's posts_per_hour and activity_level
+    regardless of what the LLM returned. Always applied (no opt-out). Returns the
+    same dict for chaining.
+    """
+    pph_cap = _env_int("CRUCIBLE_SYNTH_PPH_CAP", 3)
+    act_cap = _env_float("CRUCIBLE_SYNTH_ACT_CAP", 0.7)
+    entry["posts_per_hour"] = min(int(entry.get("posts_per_hour", pph_cap) or 0), pph_cap)
+    entry["activity_level"] = min(float(entry.get("activity_level", act_cap) or 0), act_cap)
+    return entry
 
 
 def _patch_time_config_24h(cfg, *, agents_per_hour):
@@ -202,10 +268,12 @@ def generate_synthetic(client, model, *, briefing, preflight, real_agents,
 
 
 def inject(sim_dir: Path, synthetic_agents: list[dict], *,
-           start_agent_id: int):
+           start_agent_id: int, mode: str = "default"):
     """Append synthetic_agents into simulation_config.json + twitter_profiles.csv.
 
-    Mutates files in place. Returns list of full agent_config dicts as written.
+    Also (a) lifts real-agent activity floors when mode in (default, miroshark),
+    (b) hard-caps synthetic agents' posts_per_hour/activity_level via
+    _clamp_synth_entry. Mutates files in place. Returns list of written entries.
     """
     cfg_path = sim_dir / "simulation_config.json"
     csv_path = sim_dir / "twitter_profiles.csv"
@@ -215,6 +283,19 @@ def inject(sim_dir: Path, synthetic_agents: list[dict], *,
         raise RuntimeError(
             f"start_agent_id={start_agent_id} but agent_configs has {real_count} entries"
         )
+
+    if mode in ("default", "miroshark"):
+        lift_stats = _lift_real_agents(cfg, real_count=real_count)
+        if lift_stats.get("skipped"):
+            print(f"[OK] lift-real skipped ({lift_stats['skipped']})")
+        else:
+            print(f"[OK] lift-real applied to {lift_stats['lifted_count']}/"
+                  f"{lift_stats['real_count']} real agents "
+                  f"(pph≥{lift_stats['pph_floor']}, "
+                  f"act≥{lift_stats['act_floor']}, "
+                  f"delay_max≤{lift_stats['delay_max_cap']}s)")
+    else:
+        print(f"[OK] lift-real skipped (mode={mode}, mirofish keeps pure baseline)")
 
     written = []
     csv_rows = []
@@ -228,8 +309,8 @@ def inject(sim_dir: Path, synthetic_agents: list[dict], *,
             "entity_uuid": entity_uuid,
             "entity_name": entity_name,
             "entity_type": sa.get("entity_type", "Person"),
-            "activity_level": float(sa.get("activity_level", 0.75)),
-            "posts_per_hour": int(sa.get("posts_per_hour", 4)),
+            "activity_level": float(sa.get("activity_level", 0.7)),
+            "posts_per_hour": int(sa.get("posts_per_hour", 3)),
             "comments_per_hour": int(sa.get("comments_per_hour", 6)),
             "active_hours": active_hours,
             "response_delay_min": 2,
@@ -242,6 +323,7 @@ def inject(sim_dir: Path, synthetic_agents: list[dict], *,
             "private_prior": sa.get("private_prior", ""),
             "conflicts_with": sa.get("conflicts_with", []),
         }
+        _clamp_synth_entry(cfg_entry)
         cfg["agent_configs"].append(cfg_entry)
         written.append(cfg_entry)
         csv_rows.append({
@@ -321,7 +403,8 @@ def main():
         print(f"  - [{s.get('role')}] {s.get('name')[:60]}  "
               f"conflicts_with={s.get('conflicts_with')}")
 
-    written = inject(sim_dir, synth, start_agent_id=len(real_agents))
+    written = inject(sim_dir, synth, start_agent_id=len(real_agents),
+                     mode=args.mode)
     Path(args.out).write_text(json.dumps(
         {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
          "mode": args.mode,
