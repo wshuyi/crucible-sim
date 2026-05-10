@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Layer 1: pre-flight briefing audit.
 
-Reads a briefing markdown, asks glm-4.6 to surface:
+Reads a briefing markdown, asks the configured LLM (default: glm-4.7) to surface:
 - named entities (companies, products, people)
 - numerical claims (with potential dispute angle)
 - contested points (with sides)
@@ -67,7 +67,7 @@ def main():
                                            os.environ.get("OPENROUTER_API_KEY",
                                            os.environ.get("ZAI_API_KEY", ""))))
     ap.add_argument("--llm-model",
-                    default=os.environ.get("LLM_MODEL_NAME", "glm-4.6"))
+                    default=os.environ.get("LLM_MODEL_NAME", "glm-4.7"))
     ap.add_argument("--max-tokens", type=int, default=4000)
     args = ap.parse_args()
 

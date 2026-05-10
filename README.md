@@ -63,9 +63,10 @@ include local `glm-proxy`, OpenRouter, and OpenAI direct.
 # Local glm-proxy (default — your own OpenAI-compatible service on port 8011, NOT part of MiroFish)
 export LLM_BASE_URL="http://127.0.0.1:8011/v1"
 export LLM_API_KEY="$ZAI_API_KEY"
-export LLM_MODEL_NAME="glm-4.6"
+export LLM_MODEL_NAME="glm-4.7"
 
-# OpenRouter — set ALL four model env vars so Pass B / Pass C / Pass A fallback don't reach for glm-4.6
+# OpenRouter — set every model env var so cross-provider runs don't fall back to built-in z.ai
+# slugs (high-reasoning steps default to glm-4.7; Pass A fallback defaults to glm-4.5-air).
 export LLM_BASE_URL="https://openrouter.ai/api/v1"
 export LLM_API_KEY="$OPENROUTER_API_KEY"
 export LLM_MODEL_NAME="anthropic/claude-haiku-4.5"
@@ -90,6 +91,16 @@ export LLM_MODEL_A_FALLBACK="$LLM_MODEL_NAME"
 Most scripts also accept `--llm-base-url`, `--llm-api-key`, and `--llm-model` directly.
 `twopass_report.py` uses `--llm-model-b` for Pass B and the env var `LLM_MODEL_A_FALLBACK` for the
 Pass A fallback path.
+
+**Why glm-4.7 by default:** every reasoning-heavy step in crucible (preflight audit, synthetic-agent
+generation, **R1 question generation**, disagreement scan, Pass B critique, Pass C gap audit) defaults
+to `glm-4.7` rather than `glm-4.6`. Compared to 4.6, 4.7 costs about +9.1% on input tokens and +10%
+on output tokens, while adding a 202k context window and scoring materially higher on the relevant
+benchmarks (SWE-bench +6pp, Terminal Bench 2.0 +16.5%, plus AIME 2025 / GPQA / HLE / LiveCodeBench
+v6). For the dozen-or-so prompts that hit these steps in one run the cost delta is negligible and
+question / report quality is the bottleneck. The Pass A *fallback* (only fires when MiroFish's ReACT
+pipeline trips a content filter) stays on `glm-4.5-air` intentionally, since Pass A is a
+deliberately neutral synthesis.
 
 ### Quickstart
 
@@ -261,9 +272,10 @@ or MiroShark; if you fork it and vendor any, respect the upstream licenses.
 # 本地 glm-proxy（默认；你自己运行的服务，**不**属于 MiroFish）
 export LLM_BASE_URL="http://127.0.0.1:8011/v1"
 export LLM_API_KEY="$ZAI_API_KEY"
-export LLM_MODEL_NAME="glm-4.6"
+export LLM_MODEL_NAME="glm-4.7"
 
-# OpenRouter — 必须设全 4 个模型变量，否则 Pass B / Pass C / Pass A fallback 仍会回退到 glm-4.6
+# OpenRouter — 必须设全模型变量，否则跨 provider 运行时会回退到内置 z.ai slug
+# （高推理步骤默认 glm-4.7；Pass A fallback 默认 glm-4.5-air）。
 export LLM_BASE_URL="https://openrouter.ai/api/v1"
 export LLM_API_KEY="$OPENROUTER_API_KEY"
 export LLM_MODEL_NAME="anthropic/claude-haiku-4.5"
@@ -283,6 +295,8 @@ export LLM_MODEL_A_FALLBACK="$LLM_MODEL_NAME"
 > 模型 slug 与提供商相关、且会变化；建议在 [openrouter.ai/models](https://openrouter.ai/models) 与 [platform.openai.com/docs/models](https://platform.openai.com/docs/models) 上确认当前可用 ID 后再使用。
 
 大多数脚本也支持 `--llm-base-url / --llm-api-key / --llm-model` CLI 参数；`twopass_report.py` 的 Pass B 走 `--llm-model-b`，Pass A fallback 读环境变量 `LLM_MODEL_A_FALLBACK`。
+
+**为什么默认 glm-4.7：** crucible 里每一个高推理密度的步骤（preflight 审计、合成 agent 生成、**R1 提问生成**、disagreement scan、Pass B 批评、Pass C 盲区审计）默认都用 `glm-4.7` 而不是 4.6。相比 4.6，4.7 输入 token 约贵 9.1%、输出 token 贵 10%，但上下文扩到 202k，并在 SWE-bench (+6pp)、Terminal Bench 2.0 (+16.5%)、AIME 2025 / GPQA / HLE / LiveCodeBench v6 上明显更强；对单次运行总共十几次调用而言成本差可以忽略，问题/报告质量才是瓶颈。Pass A 的 *fallback*（仅在 MiroFish ReACT 被 1301 内容过滤拦截时触发）仍保留 `glm-4.5-air`——这一档本就是中性综述、不需要旗舰模型。
 
 ### 快速开始
 

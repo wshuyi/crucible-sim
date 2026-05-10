@@ -16,3 +16,8 @@ Sample artifacts from a real `default`-mode run against the briefing in
 
 Knowledge graph + replay GIF + bundled `index.html` are not included in the repo
 (too large / regenerable). Re-run the pipeline to produce them locally.
+
+> **Note:** this checked-in example preserves provenance from an earlier run made before the
+> `glm-4.7` default bump. Embedded `model` fields in these JSON files show `glm-4.6` /
+> `glm-4.5-air`, which are historical run-time values — **not** the current default in
+> `crucible/*.py`.

@@ -2,7 +2,8 @@
 """Layer 4a/b: Pass A (neutral, MiroFish endpoint) + Pass B (sharp perspective).
 
 Pass A:  POST /api/report/generate  (force_regenerate=True), poll, dump markdown.
-Pass B:  custom prompt to glm-4.6, fed posts + R2 cross-fire + R3 weakest.
+Pass B:  custom prompt to the configured Pass B model (default: glm-4.7),
+         fed posts + R2 cross-fire + R3 weakest.
 
 Usage:
   python twopass_report.py --backend ... --simulation-id ... --results-dir ... \
@@ -236,7 +237,7 @@ def fmt_r3(r3_items):
 
 
 def run_pass_b(briefing, raw_dir, interviews_path, out_path, *,
-               llm_base_url, llm_api_key, model="glm-4.6",
+               llm_base_url, llm_api_key, model="glm-4.7",
                max_tokens=12000):
     profiles = _load_body(raw_dir / "art_profiles.json")
     profiles = profiles.get("data", {}).get("profiles") or profiles.get("profiles") or []
@@ -291,7 +292,7 @@ def main():
                                            os.environ.get("OPENROUTER_API_KEY",
                                            os.environ.get("ZAI_API_KEY", ""))))
     ap.add_argument("--llm-model-b",
-                    default=os.environ.get("LLM_MODEL_B", "glm-4.6"))
+                    default=os.environ.get("LLM_MODEL_B", "glm-4.7"))
     args = ap.parse_args()
 
     raw_dir = Path(args.results_dir) / "raw"
@@ -307,7 +308,7 @@ def main():
                    fallback_model=os.environ.get("LLM_MODEL_A_FALLBACK",
                                                  "glm-4.5-air"))
     if "B" in passes:
-        print("\n=== Pass B: sharp perspective (glm-4.6) ===")
+        print(f"\n=== Pass B: sharp perspective ({args.llm_model_b}) ===")
         run_pass_b(briefing, raw_dir, args.interviews, args.out_b,
                    llm_base_url=args.llm_base_url,
                    llm_api_key=args.llm_api_key,

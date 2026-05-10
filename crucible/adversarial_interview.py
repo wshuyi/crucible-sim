@@ -89,7 +89,8 @@ def gen_r1_question(client, model, agent, requirement):
     for prefix in ("问题：", "问题:", "Q:", "Q：", "提问："):
         if q.startswith(prefix):
             q = q[len(prefix):].strip()
-    return q.strip('"').strip("「」").strip("“”").strip()[:200]
+    # Prompt asks for ≤55 字; enforce hard cap so "≤55" is a real contract.
+    return q.strip('"').strip("「」").strip("“”").strip()[:55]
 
 
 def call_batch(base, sim_id, items, *, platform="twitter", timeout=900):
@@ -156,7 +157,7 @@ def main():
                                            os.environ.get("OPENROUTER_API_KEY",
                                            os.environ.get("ZAI_API_KEY", ""))))
     ap.add_argument("--llm-model",
-                    default=os.environ.get("LLM_MODEL_NAME", "glm-4.5-air"))
+                    default=os.environ.get("LLM_MODEL_NAME", "glm-4.7"))
     args = ap.parse_args()
 
     raw_dir = Path(args.results_dir) / "raw"

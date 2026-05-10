@@ -329,17 +329,17 @@ th{{background:#161b22}}
   <div class="report-grid">
     <div class="card">
       <h3>Pass A · Neutral synthesis</h3>
-      <p style="color:#8b949e;font-size:11px">MiroFish ReACT, glm-4.5-air</p>
+      <p style="color:#8b949e;font-size:11px">MiroFish ReACT; direct LLM fallback if needed</p>
       {_md_to_html(pass_a) or '<i>not generated</i>'}
     </div>
     <div class="card">
       <h3>Pass B · Sharp perspective</h3>
-      <p style="color:#8b949e;font-size:11px">glm-4.6, opinionated</p>
+      <p style="color:#8b949e;font-size:11px">configured Pass B model, opinionated</p>
       {_md_to_html(pass_b) or '<i>not generated</i>'}
     </div>
     <div class="card">
       <h3>Pass C · Gap audit</h3>
-      <p style="color:#8b949e;font-size:11px">glm-4.6, missing-angle audit</p>
+      <p style="color:#8b949e;font-size:11px">configured Pass C model, missing-angle audit</p>
       {_md_to_html(pass_c) or '<i>not generated</i>'}
     </div>
   </div>

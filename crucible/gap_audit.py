@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Layer 4c: gap audit (Pass C).
 
-Reads preflight.missing_angles + posts + R3 challenge results, asks glm-4.6
-to write a structured "missing angle" audit:
+Reads preflight.missing_angles + posts + R3 challenge results, asks the configured
+LLM (default: glm-4.7) to write a structured "missing angle" audit:
 1. 未探索角度（preflight 列了 N 个，sim 实际探索了几个？哪些零覆盖？）
 2. 未出现的反方观点（哪些预期反方在 posts 里没出现？）
 3. 被反复 parrot 的数字 + R3 是否戳穿（38%, 1.6%, 14天 等）
@@ -111,7 +111,7 @@ def main():
                                            os.environ.get("OPENROUTER_API_KEY",
                                            os.environ.get("ZAI_API_KEY", ""))))
     ap.add_argument("--llm-model",
-                    default=os.environ.get("LLM_MODEL_C", "glm-4.6"))
+                    default=os.environ.get("LLM_MODEL_C", "glm-4.7"))
     ap.add_argument("--max-tokens", type=int, default=8000)
     args = ap.parse_args()
 

@@ -285,7 +285,7 @@ def main():
                                            os.environ.get("OPENROUTER_API_KEY",
                                            os.environ.get("ZAI_API_KEY", ""))))
     ap.add_argument("--llm-model",
-                    default=os.environ.get("LLM_MODEL_NAME", "glm-4.6"))
+                    default=os.environ.get("LLM_MODEL_NAME", "glm-4.7"))
     args = ap.parse_args()
 
     briefing = Path(args.briefing).read_text()
