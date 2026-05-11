@@ -503,6 +503,26 @@ def main():
         print(f"[FAIL] synthetic_agents.py exit {rc}")
         sys.exit(rc)
 
+    # 5.5. Reassign round-0 initial_posts by content semantics.
+    #
+    # MiroFish backend assigns initial_posts to agents by poster_type rotation
+    # only — content semantics are ignored. Result: when briefing has many
+    # Person-type quotes, role-quote attribution gets scrambled (e.g. CEO 张一鸣
+    # ends up "saying" 老顾's words). We rewrite poster_agent_id by asking the
+    # LLM to map each post to the most-likely speaker. Skipped via
+    # CRUCIBLE_NO_REASSIGN_INITIAL=1.
+    if not os.environ.get("CRUCIBLE_NO_REASSIGN_INITIAL"):
+        print("\n--- reassign_initial_posts ---")
+        cmd = [sys.executable, str(here / "reassign_initial_posts.py"),
+               "--sim-dir", str(sim_dir),
+               "--llm-base-url", args.llm_base_url,
+               "--llm-api-key", args.llm_api_key,
+               "--llm-model", args.llm_model,
+               "--out", str(out / "reassign_initial_posts.json")]
+        rc = subprocess.call(cmd)
+        if rc != 0:
+            print(f"[WARN] reassign_initial_posts exit {rc} — continuing with original assignment")
+
     # 6. Start (force=True since we changed agent count → DB needs reset)
     body = post_json(s, f"{base}/api/simulation/start",
                      {"simulation_id": sim_id,

@@ -165,7 +165,13 @@ def build(out_dir: Path):
     for n in nodes[:200]:
         nid = n.get("uuid") or n.get("id") or n.get("name")
         label = n.get("name") or n.get("label") or str(nid)[:8]
-        group = n.get("entity_type") or n.get("type") or "Entity"
+        # Zep KG returns entity type via `labels: [...]`, not `entity_type`.
+        # Without this fallback every node lands in "Entity" and color-grouping
+        # in the network viz collapses to one color.
+        labels = n.get("labels") or []
+        group = (n.get("entity_type") or n.get("type")
+                 or (labels[0] if isinstance(labels, list) and labels else None)
+                 or "Entity")
         vis_nodes.append({"id": nid, "label": label, "group": group,
                           "title": (n.get("summary") or "")[:300]})
     vis_edges = []
@@ -204,27 +210,108 @@ def build(out_dir: Path):
             f'<p>{escape(bio)}</p>{synth_tail}</div>'
         )
 
-    # ---- posts
-    posts_html = []
-    for p in posts_list[:300]:
-        uid = p.get("user_id")
+    # ---- posts (grouped by round = created_at, ascending)
+    def _post_round_key(p):
+        v = p.get("created_at")
         try:
-            uid = int(uid)
+            return int(v)
         except (TypeError, ValueError):
-            uid = -1
-        author = name_by_uid.get(uid, p.get("author_name") or "?")
-        is_synth = uid in synth_ids
-        author_tag = (f'<b style="color:#f78166">@{escape(author)}</b>' if is_synth
-                      else f'<b>@{escape(author)}</b>')
-        round_n = p.get("created_at")
-        likes = p.get("num_likes", p.get("like_count", 0))
-        rt = p.get("num_shares", p.get("repost_count", 0))
-        content = p.get("content") or p.get("text") or ""
-        posts_html.append(
-            f'<div class="post"><div class="meta">{author_tag} · round {escape(str(round_n))}'
-            f' · ❤ {likes} · ↻ {rt}</div>'
-            f'<div class="content">{escape(content)}</div></div>'
+            return -1
+
+    posts_by_round = {}
+    for p in posts_list[:300]:
+        posts_by_round.setdefault(_post_round_key(p), []).append(p)
+
+    def _uid(p):
+        try:
+            return int(p.get("user_id"))
+        except (TypeError, ValueError):
+            return -1
+
+    # OASIS quote_post field-semantics quirk: when a post has a non-empty
+    # quote_content AND content == "the original post being quoted", the LLM's
+    # actual new utterance lives in quote_content (NOT content). We resolve the
+    # speaker's real text per-post via this helper; without it the timeline
+    # looks like everyone is parroting the same line.
+    orig_content_by_id = {p.get("post_id"): (p.get("content") or "").strip()
+                          for p in posts_list if p.get("original_post_id") is None}
+
+    def _speaker_text(p):
+        """Return (utterance, quoted_excerpt_or_none).
+        utterance = what this speaker actually wrote this turn.
+        quoted_excerpt = the original post being referenced, if any.
+        """
+        content = (p.get("content") or p.get("text") or "").strip()
+        quote = (p.get("quote_content") or "").strip()
+        orig_id = p.get("original_post_id")
+        if orig_id and quote:
+            orig_text = orig_content_by_id.get(orig_id, "")
+            # If content == the original being quoted, the LLM's true new
+            # utterance is in quote_content (OASIS field-swap quirk).
+            if orig_text and content and content[:60] == orig_text[:60]:
+                return quote, content
+            # Normal case: content is the new utterance, quote_content is what's
+            # being quoted.
+            return content, quote
+        return content, None
+
+    # Cross-round summary: real/synth count per round
+    round_summary_rows = []
+    for rn in sorted(posts_by_round.keys()):
+        g = posts_by_round[rn]
+        r_in = sum(1 for p in g if _uid(p) not in synth_ids)
+        round_summary_rows.append(
+            f'<tr><td>Round {rn}</td><td>{len(g)}</td><td>{r_in}</td>'
+            f'<td>{len(g)-r_in}</td></tr>'
         )
+
+    posts_summary_html = (
+        '<div class="oasis-note">'
+        '<b>本次 OASIS posts 时间线分布：</b>'
+        '<table style="margin-top:6px"><thead><tr>'
+        '<th>Round</th><th>Total</th><th>Real</th><th>Synth</th></tr></thead>'
+        f'<tbody>{"".join(round_summary_rows)}</tbody></table>'
+        '<div style="margin-top:8px;color:#8b949e;font-size:12px">'
+        'Round 1+ 由合成 agent 主导是 default 模式预期行为（synth 注入是为了在真实 agent 沉默时持续施压）。'
+        '想看真实 agent 的多视角，去 <a href="#real-voices">Real-Agent Voices</a> section（step 6 R1/R2/R3 采访）。</div>'
+        '</div>'
+    )
+
+    posts_html = [posts_summary_html]
+    for round_n in sorted(posts_by_round.keys()):
+        group = posts_by_round[round_n]
+        group.sort(key=lambda x: (x.get("post_id") or 0))
+        real_in_round = sum(1 for p in group if _uid(p) not in synth_ids)
+        synth_in_round = len(group) - real_in_round
+        posts_html.append(
+            f'<h3 class="round-header">Round {escape(str(round_n))}'
+            f' <span class="round-count">({len(group)} posts · '
+            f'{real_in_round} real / {synth_in_round} synth)</span></h3>'
+        )
+
+        for p in group:
+            uid = _uid(p)
+            author = name_by_uid.get(uid, p.get("author_name") or "?")
+            is_synth = uid in synth_ids
+            author_tag = (f'<b style="color:#f78166">@{escape(author)}</b>' if is_synth
+                          else f'<b>@{escape(author)}</b>')
+            likes = p.get("num_likes", p.get("like_count", 0))
+            rt = p.get("num_shares", p.get("repost_count", 0))
+            utter, quoted = _speaker_text(p)
+            quoted_html = ""
+            if quoted:
+                qhead = quoted[:200] + ("…" if len(quoted) > 200 else "")
+                quoted_html = (
+                    '<div class="quoted-orig">↳ 引用 '
+                    f'<span style="color:#8b949e">post #{p.get("original_post_id")}</span>: '
+                    f'<span class="quoted-text">«{escape(qhead)}»</span></div>'
+                )
+            posts_html.append(
+                f'<div class="post"><div class="meta">{author_tag}'
+                f' · ❤ {likes} · ↻ {rt}</div>'
+                f'<div class="content">{escape(utter)}</div>'
+                f'{quoted_html}</div>'
+            )
 
     # ---- interviews tabs
     iv_path = out_dir / "interviews_r1_r2_r3.json"
@@ -268,6 +355,69 @@ def build(out_dir: Path):
             )
         iv_summary["pairs"] = len(iv.get("pairs", []))
 
+    # ---- Real-Agent Voices (R1/R2/R3 aggregated by real agent)
+    # OASIS posts timeline often falls silent for real agents in round 1+
+    # (LLM picks do_nothing or quote_post). The interviews capture each real
+    # person's full voice; surface them grouped by speaker so the user sees
+    # the differentiated views the briefing was supposed to test.
+    real_voices_html = ""
+    real_voices_count = 0
+    if iv_path.exists():
+        by_agent = {}
+        for it in iv.get("R1_self_statement", []):
+            aid = it.get("agent_id")
+            if aid is None or aid in synth_ids:
+                continue
+            by_agent.setdefault(aid, {
+                "name": it.get("agent_name", "?"), "r1": [], "r2": [], "r3": []
+            })["r1"].append(it)
+        for it in iv.get("R2_cross_fire", []):
+            aid = it.get("agent_id")
+            if aid is None or aid in synth_ids:
+                continue
+            by_agent.setdefault(aid, {
+                "name": it.get("agent_name", "?"), "r1": [], "r2": [], "r3": []
+            })["r2"].append(it)
+        for it in iv.get("R3_weakest_claim", []):
+            aid = it.get("agent_id")
+            if aid is None or aid in synth_ids:
+                continue
+            by_agent.setdefault(aid, {
+                "name": it.get("agent_name", "?"), "r1": [], "r2": [], "r3": []
+            })["r3"].append(it)
+
+        real_voices_count = len(by_agent)
+        for aid in sorted(by_agent.keys()):
+            v = by_agent[aid]
+            blocks = []
+            for r in v["r1"]:
+                blocks.append(
+                    '<div class="rv-block"><div class="rv-tag">R1 self-statement</div>'
+                    f'<div class="rv-q">Q: {escape(r.get("question",""))}</div>'
+                    f'<div class="rv-a">{escape(r.get("answer",""))}</div></div>'
+                )
+            for r in v["r2"]:
+                facing = r.get("facing", "?")
+                topic = r.get("topic_key", "")
+                blocks.append(
+                    f'<div class="rv-block"><div class="rv-tag">R2 cross-fire vs @{escape(facing)}'
+                    f' <span class="tag">topic={escape(topic)}</span></div>'
+                    f'<div class="rv-q">Q: {escape(r.get("question",""))}</div>'
+                    f'<div class="rv-a">{escape(r.get("answer",""))}</div></div>'
+                )
+            for r in v["r3"]:
+                blocks.append(
+                    '<div class="rv-block"><div class="rv-tag">R3 weakest-claim challenge</div>'
+                    f'<div class="rv-q">Q: {escape(r.get("question",""))}</div>'
+                    f'<div class="rv-a">{escape(r.get("answer",""))}</div></div>'
+                )
+            if blocks:
+                real_voices_html += (
+                    f'<div class="rv-agent"><h3>@{escape(v["name"])} '
+                    f'<span class="tag">id={aid}</span></h3>'
+                    + "".join(blocks) + "</div>"
+                )
+
     # ---- reports A/B/C
     pass_a = (out_dir / "report_pass_A.md").read_text() if (out_dir / "report_pass_A.md").exists() else ""
     pass_b = (out_dir / "report_pass_B.md").read_text() if (out_dir / "report_pass_B.md").exists() else ""
@@ -308,6 +458,28 @@ h3{{font-size:15px;margin:14px 0 6px;color:#c9d1d9}}
   padding:12px 16px;margin-bottom:12px}}
 .post .meta{{color:#8b949e;font-size:12px;margin-bottom:6px}}
 .post .content{{white-space:pre-wrap;word-break:break-word;font-size:14px}}
+.round-header{{margin:24px 0 12px;padding-bottom:6px;border-bottom:1px solid #30363d;
+  color:#58a6ff;font-size:16px;font-weight:600}}
+.round-header:first-child{{margin-top:0}}
+.round-count{{color:#8b949e;font-weight:400;font-size:13px;margin-left:8px}}
+.oasis-note{{background:#1c2530;border-left:3px solid #58a6ff;padding:10px 14px;
+  margin:0 0 14px;color:#c9d1d9;font-size:13px;line-height:1.5;border-radius:0 4px 4px 0}}
+.oasis-note a{{color:#58a6ff}}
+.echo-note{{margin-top:8px;padding-top:8px;border-top:1px dashed #30363d;
+  color:#8b949e;font-size:12px;font-style:italic}}
+.echo-note b{{color:#d29922}}
+.quoted-orig{{margin-top:8px;padding:8px 12px;background:#0d1117;border-left:3px solid #30363d;
+  color:#8b949e;font-size:12px;border-radius:0 4px 4px 0}}
+.quoted-text{{color:#c9d1d9;font-style:italic}}
+.rv-agent{{background:#161b22;border:1px solid #30363d;border-radius:6px;
+  padding:14px 18px;margin-bottom:18px}}
+.rv-agent h3{{margin:0 0 10px;color:#58a6ff;font-size:15px;font-weight:600}}
+.rv-agent h3 .tag{{font-weight:400;font-size:11px}}
+.rv-block{{background:#0d1117;border-left:3px solid #3fb950;padding:10px 14px;
+  margin-top:10px;border-radius:0 4px 4px 0}}
+.rv-tag{{color:#79c0ff;font-size:12px;margin-bottom:6px;font-weight:600}}
+.rv-q{{color:#8b949e;font-size:13px;margin-bottom:8px;font-style:italic}}
+.rv-a{{color:#c9d1d9;font-size:14px;line-height:1.55;white-space:pre-wrap}}
 .profile{{background:#161b22;border:1px solid #30363d;border-radius:6px;
   padding:12px 16px;margin-bottom:12px}}
 .tag{{display:inline-block;background:#1f2937;color:#9ca3af;border-radius:4px;
@@ -357,6 +529,7 @@ th{{background:#161b22}}
   {'<a href="#replay">Replay</a>' if has_replay else ''}
   <a href="#agents">Agents</a>
   <a href="#posts">Posts</a>
+  <a href="#real-voices">Real Voices</a>
   <a href="#interviews">Interviews</a>
   <a href="#reports">Reports</a>
 </nav>
@@ -389,9 +562,19 @@ th{{background:#161b22}}
 </section>
 
 <section id="posts">
-  <h2>Posts (first 300)</h2>
+  <h2>Posts (first 300, grouped by round)</h2>
   {(f'<div class="warn-banner-inline">{disclaimer_html}</div>') if disclaimer_html else ''}
   {''.join(posts_html) or '<i>no posts</i>'}
+</section>
+
+<section id="real-voices">
+  <h2>Real-Agent Voices ({real_voices_count} agents) <span class="round-count">— 来自 step 6 R1/R2/R3 私下采访</span></h2>
+  <div class="oasis-note">
+    OASIS posts 时间线在 round 1+ 通常被合成 agent 主导（真实 agent 的 LLM 倾向选 do_nothing 或 quote_post 兜底，造成内容复读）。
+    本 section 把 step 6 R1/R2/R3 三轮采访按真实 agent 聚合，让每个真实人物的差异化立场完整呈现。
+    同一 agent 的 R1（自陈）/ R2（针对对手）/ R3（挑战 briefing 弱点）可以横向对比，看 ta 在不同压力下是否一致。
+  </div>
+  {real_voices_html or '<i>no real-agent voices captured</i>'}
 </section>
 
 <section id="interviews">

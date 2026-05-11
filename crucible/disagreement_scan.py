@@ -144,20 +144,64 @@ def build_prompt(profiles, posts, topic_defs):
                          agents_block="\n\n".join(agent_blocks))
 
 
-def llm_stance(client, model, prompt, *, max_tokens=8000):
-    r = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-        max_tokens=max_tokens,
-    )
+def llm_stance(client, model, prompt, *, max_tokens=16000):
+    # Try response_format=json_object first; fall back if backend rejects it.
+    try:
+        r = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+        )
+    except Exception:
+        r = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=max_tokens,
+        )
     raw = (r.choices[0].message.content or "").strip()
     if raw.startswith("```"):
         raw = raw.strip("`")
         if raw.startswith("json"):
             raw = raw[4:]
         raw = raw.strip()
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # Truncated / trailing-comma JSON: find largest prefix ending with a
+        # balanced top-level brace and parse that.
+        depth = 0
+        last_good = -1
+        in_str = False
+        esc = False
+        for i, ch in enumerate(raw):
+            if esc:
+                esc = False
+                continue
+            if ch == "\\" and in_str:
+                esc = True
+                continue
+            if ch == '"':
+                in_str = not in_str
+                continue
+            if in_str:
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    last_good = i
+        if last_good > 0:
+            try:
+                return json.loads(raw[: last_good + 1])
+            except json.JSONDecodeError:
+                pass
+        print(f"[disagreement_scan] llm raw head: {raw[:300]}", file=sys.stderr)
+        print(f"[disagreement_scan] llm raw tail: {raw[-300:]}", file=sys.stderr)
+        raise
 
 
 def find_pairs(stance_data, *, topic_meta):

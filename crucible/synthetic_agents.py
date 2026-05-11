@@ -144,6 +144,65 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+REAL_PROFILE_LIFT_TAG = "[crucible-lift]"
+REAL_PROFILE_LIFT_TEXT = (
+    " " + REAL_PROFILE_LIFT_TAG +
+    " 你在本话题上有强烈观点。当看到他人的论点，你会主动反驳、补充新视角或追问数据，"
+    "而非保持沉默或仅做官方姿态。每一轮社交媒体讨论都会从你的角度发表新论点；"
+    "禁止以『低调』、『很少参与平台互动』或『通过官方渠道』为由跳过本轮发言。"
+)
+
+
+def _lift_real_profiles(sim_dir: Path, real_count: int) -> dict:
+    """Append an "active discussion" prompt to each real agent's user_char in
+    twitter_profiles.csv.
+
+    Background: lift-real on agent_configs only raises the activity sampling
+    probability. Once an agent is *picked into the candidate pool*, OASIS asks
+    its LLM whether to create_post or do_nothing — and that decision reads
+    user_char, where MiroFish/Zep often writes phrases like "保持低调，很少
+    直接参与平台互动" (e.g. for CEOs, official accounts). Those phrases
+    deterministically suppress create_post in round 1+. We append a short
+    counter-instruction so real agents stay vocal, mirroring the prompt
+    pressure that synthetic agents already get from their generated personas.
+
+    Idempotent via REAL_PROFILE_LIFT_TAG marker. Disabled by
+    CRUCIBLE_NO_LIFT_REAL_PROFILE.
+    """
+    if os.environ.get("CRUCIBLE_NO_LIFT_REAL_PROFILE", "").strip() not in ("", "0", "false", "False"):
+        return {"lifted_count": 0, "skipped": "CRUCIBLE_NO_LIFT_REAL_PROFILE"}
+    csv_path = sim_dir / "twitter_profiles.csv"
+    if not csv_path.exists():
+        return {"lifted_count": 0, "skipped": "no twitter_profiles.csv"}
+    rows = []
+    with csv_path.open(encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames or [
+            "user_id", "name", "username", "user_char", "description"
+        ]
+        for row in reader:
+            rows.append(row)
+    lifted = 0
+    for row in rows:
+        try:
+            uid = int(row["user_id"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        if uid >= real_count:
+            continue  # skip synth (they have their own active prompts)
+        uc = row.get("user_char") or ""
+        if REAL_PROFILE_LIFT_TAG in uc:
+            continue
+        row["user_char"] = uc + REAL_PROFILE_LIFT_TEXT
+        lifted += 1
+    with csv_path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for row in rows:
+            w.writerow(row)
+    return {"lifted_count": lifted, "real_count": real_count}
+
+
 def _lift_real_agents(cfg: dict, *, real_count: int) -> dict:
     """Bump every real agent's posts_per_hour / activity_level above a floor and
     cap response_delay_max so brand/org accounts can actually post in short
@@ -157,11 +216,14 @@ def _lift_real_agents(cfg: dict, *, real_count: int) -> dict:
     pph_floor = _env_float("CRUCIBLE_LIFT_REAL_PPH_FLOOR", 1.5)
     act_floor = _env_float("CRUCIBLE_LIFT_REAL_ACT_FLOOR", 0.4)
     delay_max_cap = _env_int("CRUCIBLE_LIFT_REAL_DELAY_MAX_S", 60)
+    full_24h = list(range(24))
     lifted = 0
+    hours_widened = 0
     for entry in cfg.get("agent_configs", [])[:real_count]:
         before_pph = entry.get("posts_per_hour", 0)
         before_act = entry.get("activity_level", 0)
         before_delay = entry.get("response_delay_max", delay_max_cap)
+        before_hours = entry.get("active_hours") or []
         new_pph = max(float(before_pph or 0), pph_floor)
         new_act = max(float(before_act or 0), act_floor)
         # Only set upper bound on response_delay_max; leave response_delay_min alone.
@@ -169,12 +231,25 @@ def _lift_real_agents(cfg: dict, *, real_count: int) -> dict:
         if (new_pph != before_pph or new_act != before_act
                 or new_delay != before_delay):
             lifted += 1
+        # CRITICAL: real agents get active_hours like [9,10,11,20,21,22] from
+        # the LLM persona generator, but OASIS round 0/1/2 map to simulated
+        # hours 0/1/2 — so every real agent gets `continue`d in
+        # _get_active_agents_for_round, leaving only synth agents (whose
+        # active_hours=range(24)) in the candidate pool. Widening real-agent
+        # active_hours to 24h matches the synth contract and lets real agents
+        # be considered every round. Disabled via CRUCIBLE_NO_LIFT_REAL_HOURS.
+        if (os.environ.get("CRUCIBLE_NO_LIFT_REAL_HOURS", "").strip()
+                in ("", "0", "false", "False")):
+            if list(before_hours) != full_24h:
+                entry["active_hours"] = full_24h
+                hours_widened += 1
         entry["posts_per_hour"] = new_pph
         entry["activity_level"] = new_act
         entry["response_delay_max"] = new_delay
     return {"lifted_count": lifted, "real_count": real_count,
             "pph_floor": pph_floor, "act_floor": act_floor,
-            "delay_max_cap": delay_max_cap}
+            "delay_max_cap": delay_max_cap,
+            "hours_widened": hours_widened}
 
 
 def _clamp_synth_entry(entry: dict) -> dict:
@@ -293,7 +368,14 @@ def inject(sim_dir: Path, synthetic_agents: list[dict], *,
                   f"{lift_stats['real_count']} real agents "
                   f"(pph≥{lift_stats['pph_floor']}, "
                   f"act≥{lift_stats['act_floor']}, "
-                  f"delay_max≤{lift_stats['delay_max_cap']}s)")
+                  f"delay_max≤{lift_stats['delay_max_cap']}s, "
+                  f"active_hours widened on {lift_stats.get('hours_widened',0)})")
+        prof_stats = _lift_real_profiles(sim_dir, real_count=real_count)
+        if prof_stats.get("skipped"):
+            print(f"[OK] lift-real-profile skipped ({prof_stats['skipped']})")
+        else:
+            print(f"[OK] lift-real-profile appended active-discussion prompt to "
+                  f"{prof_stats['lifted_count']}/{prof_stats['real_count']} real agents' user_char")
     else:
         print(f"[OK] lift-real skipped (mode={mode}, mirofish keeps pure baseline)")
 
